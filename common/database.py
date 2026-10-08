@@ -22,10 +22,6 @@ session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, autoflus
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    """Сессия на один запрос. Незакоммиченное откатывается при закрытии.
-
-    Коммит делает сервис явно (`await self._session.commit()`): так ошибка,
-    поднятая после записи, гарантированно не попадёт в БД.
-    """
+    """Request-scoped session. Services commit explicitly; anything uncommitted is rolled back."""
     async with session_maker() as session:
         yield session

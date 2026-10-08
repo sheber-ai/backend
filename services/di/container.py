@@ -13,13 +13,13 @@ from services.di import providers as providers_package
 from services.di.types import Providers
 from settings.app_settings import AppSettings
 from settings.db_settings import DBSettings
+from settings.keycloak_settings import KeycloakSettings
 from settings.resolver import get_settings
 
-SETTINGS_CLASSES: tuple[type[BaseSettings], ...] = (AppSettings, DBSettings)
+SETTINGS_CLASSES: tuple[type[BaseSettings], ...] = (AppSettings, DBSettings, KeycloakSettings)
 
 
 def _discover_providers() -> Iterator[Providers]:
-    """Собирает `providers` из каждого модуля services/di/providers/<домен>.py."""
     for module_info in pkgutil.iter_modules(providers_package.__path__):
         module = importlib.import_module(f"{providers_package.__name__}.{module_info.name}")
         yield module.providers

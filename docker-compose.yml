@@ -1,4 +1,4 @@
-# Локальная инфраструктура для разработки. Keycloak и S3 (MinIO) добавятся сюда же.
+# Local dev infrastructure. Keycloak lives in ../keycloak-theme (make up).
 services:
   db:
     image: postgres:18-alpine

@@ -10,7 +10,7 @@ from models.mdl_base import Base
 
 
 class BaseManager[ModelT: Base]:
-    """Доступ к БД для одной модели. Только запросы — без бизнес-логики и без commit."""
+    """DB queries for one model. Never commits."""
 
     model: ClassVar[type[Any]]
 
@@ -23,7 +23,7 @@ class BaseManager[ModelT: Base]:
     async def get_by_id_or_raise(self, id_: UUID) -> ModelT:
         obj = await self.get_by_id(id_)
         if obj is None:
-            raise NotFoundError(f"{self.model.__name__} {id_} не найден")
+            raise NotFoundError(f"{self.model.__name__} {id_} not found")
         return obj
 
     async def list(self, *, offset: int = 0, limit: int = 50) -> Sequence[ModelT]:

@@ -8,6 +8,7 @@ REST API платформы Sheber. Правила, структура и сог
 cp .env.example .env
 make install
 make db-up
+(cd ../keycloak-theme && make up)   # Keycloak на :8080
 make migrate
 make dev
 ```

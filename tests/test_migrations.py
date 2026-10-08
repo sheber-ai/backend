@@ -6,10 +6,7 @@ pytestmark = pytest.mark.db
 
 
 def test_models_match_migrations() -> None:
-    """Миграции догоняют БД до head, после чего модели не должны расходиться со схемой.
-
-    Падение значит: модель изменили, а `make migration m="..."` не запустили.
-    """
+    """Fails if a model changed without `make migration`."""
     config = Config("alembic.ini")
     command.upgrade(config, "head")
     command.check(config)

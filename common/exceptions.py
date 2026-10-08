@@ -2,7 +2,7 @@ from fastapi import status
 
 
 class AppError(Exception):
-    """Базовая доменная ошибка. Слои ниже rest_api не знают про HTTPException."""
+    """Base domain error, mapped to an HTTP response in rest_api."""
 
     status_code: int = status.HTTP_400_BAD_REQUEST
     code: str = "bad_request"
@@ -25,3 +25,13 @@ class ConflictError(AppError):
 class PermissionDeniedError(AppError):
     status_code = status.HTTP_403_FORBIDDEN
     code = "permission_denied"
+
+
+class UnauthorizedError(AppError):
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "unauthorized"
+
+
+class ServiceUnavailableError(AppError):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "service_unavailable"

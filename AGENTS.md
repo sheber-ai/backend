@@ -12,13 +12,14 @@ Sheber — платформа заказа мебели. **Клиент** заг
 Python 3.13 · FastAPI · SQLAlchemy 2 (async) + psycopg 3 · Pydantic 2 + pydantic-settings ·
 Alembic · aioinject (DI) · PostgreSQL 18 · uv · ruff · mypy (strict) · pytest + pytest-asyncio.
 
-Авторизация будет через Keycloak (JWT) — пока не реализована, не добавляйте свою.
+Авторизация — Keycloak (JWT), см. раздел «Авторизация». Локальный Keycloak: `../keycloak-theme` (`make up`).
 
 ## Команды
 
 ```bash
 make install            # uv sync + git-хуки pre-commit
 make db-up              # PostgreSQL в Docker
+# Keycloak: cd ../keycloak-theme && make up
 make migrate            # применить миграции
 make dev                # API на http://localhost:8000, Swagger: /api/docs
 make migration m="..."  # новая миграция из моделей (autogenerate)
@@ -40,6 +41,7 @@ rest_api/
   start_app.py               фабрика приложения create_app()
   routers.py                 подключение всех роутеров к /api/v1
   error_handlers.py          AppError -> HTTP-ответ
+  dependencies.py            CurrentUser, require_roles — авторизация
   <домен>/res_*.py           эндпоинты
 services/
   <домен>/svc_*.py           бизнес-логика
@@ -56,7 +58,7 @@ schemas/
   <домен>/sch_*.py           Pydantic-схемы API
 enums/<домен>_enum.py        перечисления
 settings/                    *_settings.py — классы pydantic-settings, resolver.get_settings
-common/                      инфраструктура: database.py, exceptions.py, клиенты внешних систем
+common/                      инфраструктура: database.py, exceptions.py, security/ (проверка JWT), клиенты внешних систем
 alembic/versions/            миграции (только autogenerate)
 scripts/                     служебные скрипты
 tests/                       тесты, зеркалят домены: tests/<домен>/test_*.py
@@ -180,6 +182,38 @@ async def create_listing(body: ListingCreateSchema, svc_listings: Injected[Listi
 api_v1_router.include_router(res_listings.router)
 ```
 
+## Авторизация
+
+Пользователи, пароли, регистрация и роли живут в Keycloak. Бэкенд только **проверяет access token**:
+подпись по JWKS realm'а (ключи кэшируются), срок, `iss` и `aud = sheber-backend`. Запросов к Keycloak
+на каждый запрос нет. Код: `common/security/keycloak.py`, `rest_api/dependencies.py`.
+
+```python
+from rest_api.dependencies import AdminUser, ContractorUser, CurrentUser
+
+@router.get("/mine")
+@inject
+async def list_my_listings(user: CurrentUser, svc_listings: Injected[ListingService]) -> PageSchema[ListingSchema]:
+    return await svc_listings.list_for_owner(user.id)
+
+@router.post("/{listing_id}/offers")
+@inject
+async def create_offer(listing_id: UUID, user: ContractorUser, ...) -> OfferSchema: ...
+```
+
+- `CurrentUser` — любой вошедший; `ContractorUser`, `AdminUser` — с ролью; свой набор ролей —
+  `Annotated[CurrentUserSchema, Depends(require_roles(UserRoleEnum.CLIENT, UserRoleEnum.ADMIN))]`.
+- Эндпоинт без этих зависимостей — публичный. Публичным делайте осознанно.
+- `user.id` — `sub` пользователя в Keycloak (UUID). Им связываем данные с пользователем (`owner_id` и т.п.).
+- Пользователь передаётся в сервис аргументом метода. Сервис проверяет права на конкретный объект
+  (своё объявление и т.п.) и бросает `PermissionDeniedError`; роли проверяются на уровне эндпоинта.
+- Роли — `enums/auth_enum.py` (`client`, `contractor`, `admin`) и realm-роли Keycloak с теми же именами.
+  Новая роль — в обоих местах. Роли из токена, которых нет в enum, отбрасываются.
+- Ошибки: нет/плохой токен → 401 `unauthorized`, нет роли → 403 `permission_denied`, Keycloak недоступен → 503.
+- Swagger (`/api/docs`): кнопка **Authorize** → вход через Keycloak (client `sheber-frontend`, PKCE), токен подставится сам.
+- Тесты: фикстуры `make_token` и `auth_app` из `tests/auth/conftest.py` подписывают токены локальным RSA-ключом —
+  Keycloak для тестов не нужен.
+
 ## Миграции (Alembic)
 
 **Миграции создаются только автогенерацией из моделей.** Порядок:
@@ -207,7 +241,7 @@ api_v1_router.include_router(res_listings.router)
 - `tags=["<домен>"]` на каждом роутере — Orval раскладывает код по папкам тегов. Без тега тест упадёт.
 - Каждый эндпоинт возвращает Pydantic-схему (аннотация возврата), не `dict` и не ORM-модель.
 - Списки — `PageSchema[ItemSchema]` с `offset`/`limit` в query.
-- Ошибки — `ErrorSchema {code, detail}` через `AppError`.
+- Ошибки — `ErrorSchema {code, detail}` через `AppError`. `code` — стабильный ключ для перевода на фронте, `detail` — на английском для разработчика.
 - После изменения контракта сообщите, что фронтенду нужен `npm run generate:api`.
 
 ## Тесты
@@ -244,11 +278,23 @@ api_v1_router.include_router(res_listings.router)
 | `revert` | откат коммита |
 
 - `scope` — домен (`listings`, `imports`, `db`, `di`), необязателен.
-- Описание — по-русски, с маленькой буквы, в инфинитиве («добавить», а не «добавил»), без точки, заголовок до 72 символов.
+- Описание — **на английском**, в повелительном наклонении («add», а не «added»/«adds»), с маленькой буквы, без точки, заголовок до 72 символов. Тело коммита (зачем) — тоже на английском.
 - Ломающее API изменение — `feat!:` / `fix!:` и футер `BREAKING CHANGE:`.
 - Один коммит — одно логическое изменение. Миграция коммитится вместе с изменением модели.
-- Примеры: `feat(listings): добавить публикацию объявления`, `fix(imports): обработать ссылку без og:image`, `build: обновить fastapi до 0.143`.
+- Примеры: `feat(listings): add listing publishing`, `fix(imports): handle links without og:image`, `build: bump fastapi to 0.143`.
 - Ветки: `<type>/<кратко-через-дефис>` — `feat/listing-publish`.
+
+## Комментарии и язык кода
+
+- Комментарии и докстринги — **только на английском**, коротко и **только когда без них непонятно**:
+  неочевидное «почему», ограничение, обход бага. Не пересказывайте код, не дублируйте имя функции.
+  ```python
+  # PyJWKClient does blocking I/O
+  signing_key = await asyncio.to_thread(...)
+  ```
+- Всё, что видит только разработчик, — тоже на английском: `detail` ошибок API, сообщения CLI, `## help` в Makefile,
+  названия тестов и `id` параметров. Фронтенд показывает пользователю перевод по `code` ошибки, а не `detail`.
+- Русский/казахский — только в данных (тестовые имена и т.п.).
 
 ## Чек-лист перед завершением задачи
 
@@ -263,5 +309,5 @@ api_v1_router.include_router(res_listings.router)
 - Не коммитьте и не пушьте без явной просьбы пользователя.
 - Не добавляйте зависимости без необходимости; если добавили — объясните зачем.
 - Не создавайте файлы вне описанной структуры и не вводите новые слои/префиксы без согласования.
-- Комментарии и докстринги — по-русски, объясняют «почему», а не пересказывают код.
+- Комментарии — на английском и только по необходимости (см. «Комментарии и язык кода»).
 - Если правило мешает решить задачу — остановитесь и спросите, а не обходите его.

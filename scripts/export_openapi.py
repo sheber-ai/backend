@@ -1,4 +1,4 @@
-"""Печатает OpenAPI-схему без запуска сервера: `uv run python -m scripts.export_openapi > openapi.json`."""
+"""Print the OpenAPI schema without starting the server."""
 
 import json
 import sys

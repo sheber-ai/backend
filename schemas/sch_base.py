@@ -3,7 +3,7 @@ from pydantic.alias_generators import to_camel
 
 
 class BaseSchema(BaseModel):
-    """База всех схем API. В JSON поля в camelCase, в Python — snake_case."""
+    """camelCase in JSON, snake_case in Python."""
 
     model_config = ConfigDict(
         from_attributes=True,

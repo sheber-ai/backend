@@ -8,8 +8,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-# Стабильные имена индексов и ограничений: без них autogenerate не сможет
-# корректно сравнивать и удалять constraints между миграциями.
+# Deterministic constraint names, required for autogenerate diffs
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -26,8 +25,7 @@ class Base(DeclarativeBase):
         datetime: DateTime(timezone=True),
         dict[str, Any]: JSONB,
         list[Any]: JSONB,
-        # Enum хранится строкой (значением), а не нативным типом Postgres:
-        # изменения нативных enum autogenerate не отслеживает.
+        # Store enum values as strings: autogenerate ignores native enum changes
         enum.Enum: SAEnum(
             enum.Enum,
             native_enum=False,
