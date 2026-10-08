@@ -1,0 +1,92 @@
+import asyncio
+from collections.abc import Iterable
+from logging.config import fileConfig
+
+from alembic import context
+from alembic.operations import MigrationScript
+from alembic.runtime.migration import MigrationContext
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
+
+from models import Base, import_all_models
+from settings.db_settings import DBSettings
+from settings.resolver import get_settings
+
+config = context.config
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+if not config.get_main_option("sqlalchemy.url"):
+    db_url = get_settings(DBSettings).url.render_as_string(hide_password=False)
+    config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
+
+import_all_models()
+target_metadata = Base.metadata
+
+
+def process_revision_directives(
+    migration_context: MigrationContext,
+    revision: str | Iterable[str | None] | Iterable[str],
+    directives: list[MigrationScript],
+) -> None:
+    """Миграции создаются только через autogenerate и только если модели изменились."""
+    cmd_opts = config.cmd_opts
+    if cmd_opts is None or not hasattr(cmd_opts, "autogenerate"):
+        return  # не `alembic revision` (например, `alembic check`) — не вмешиваемся
+    if not cmd_opts.autogenerate:
+        raise SystemExit(
+            'Ручные миграции запрещены: используйте `make migration m="описание"` '
+            "(alembic revision --autogenerate). Сначала измените модели в models/."
+        )
+    script = directives[0]
+    if script.upgrade_ops is not None and script.upgrade_ops.is_empty():
+        directives[:] = []
+        print("Изменений в моделях нет — миграция не создана.")  # noqa: T201
+
+
+def run_migrations_offline() -> None:
+    context.configure(
+        url=config.get_main_option("sqlalchemy.url"),
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
+        process_revision_directives=process_revision_directives,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
+        process_revision_directives=process_revision_directives,
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations() -> None:
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    asyncio.run(run_async_migrations())
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
