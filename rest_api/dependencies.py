@@ -2,12 +2,14 @@ import functools
 from collections.abc import Awaitable, Callable
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2AuthorizationCodeBearer
 
 from common.exceptions import PermissionDeniedError, UnauthorizedError
+from common.i18n import parse_accept_language
 from common.security.keycloak import KeycloakTokenVerifier
 from enums.auth_enum import UserRoleEnum
+from enums.i18n_enum import LanguageEnum
 from schemas.auth.sch_auth import CurrentUserSchema
 from settings.keycloak_settings import KeycloakSettings
 from settings.resolver import get_settings
@@ -54,3 +56,11 @@ def require_roles(*roles: UserRoleEnum) -> Callable[[CurrentUserSchema], Awaitab
 
 ContractorUser = Annotated[CurrentUserSchema, Depends(require_roles(UserRoleEnum.CONTRACTOR))]
 AdminUser = Annotated[CurrentUserSchema, Depends(require_roles(UserRoleEnum.ADMIN))]
+
+
+def get_language(request: Request) -> LanguageEnum:
+    # Read directly so the header stays out of every operation in OpenAPI
+    return parse_accept_language(request.headers.get("accept-language"))
+
+
+Language = Annotated[LanguageEnum, Depends(get_language)]

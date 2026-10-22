@@ -1,10 +1,8 @@
-import enum
 import uuid
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy import DateTime, MetaData, func
-from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -20,18 +18,13 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    # Load server-generated values (created_at, updated_at) via RETURNING: no lazy loads after flush
+    __mapper_args__ = {"eager_defaults": True}  # noqa: RUF012
 
     type_annotation_map = {  # noqa: RUF012
         datetime: DateTime(timezone=True),
         dict[str, Any]: JSONB,
         list[Any]: JSONB,
-        # Store enum values as strings: autogenerate ignores native enum changes
-        enum.Enum: SAEnum(
-            enum.Enum,
-            native_enum=False,
-            length=64,
-            values_callable=lambda enum_cls: [member.value for member in enum_cls],
-        ),
     }
 
 

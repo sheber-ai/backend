@@ -4,7 +4,7 @@ import pytest
 
 from common.exceptions import UnauthorizedError
 from common.security.keycloak import KeycloakTokenVerifier
-from tests.auth.conftest import USER_ID, MakeToken
+from tests.conftest import USER_ID, MakeToken
 
 
 async def test_verify_returns_claims_for_valid_token(verifier: KeycloakTokenVerifier, make_token: MakeToken) -> None:

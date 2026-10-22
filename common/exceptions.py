@@ -35,3 +35,25 @@ class UnauthorizedError(AppError):
 class ServiceUnavailableError(AppError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "service_unavailable"
+
+
+class InvalidStatusError(ConflictError):
+    code = "invalid_status"
+
+
+class ProfileIncompleteError(AppError):
+    code = "profile_incomplete"
+
+
+class WorkshopRequiredError(PermissionDeniedError):
+    """The user has no approved workshop."""
+
+    code = "workshop_required"
+
+
+class OfferExistsError(ConflictError):
+    code = "offer_exists"
+
+
+class CityNotFoundError(AppError):
+    code = "city_not_found"

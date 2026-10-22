@@ -1,3 +1,4 @@
+import contextlib
 from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -21,6 +22,7 @@ engine = create_engine(get_settings(DBSettings))
 session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
 
 
+@contextlib.asynccontextmanager
 async def get_session() -> AsyncIterator[AsyncSession]:
     """Request-scoped session. Services commit explicitly; anything uncommitted is rolled back."""
     async with session_maker() as session:

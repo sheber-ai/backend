@@ -1,8 +1,9 @@
 # Sheber Backend — правила для разработчиков и ИИ-агентов
 
-Sheber — платформа заказа мебели. **Клиент** загружает ссылку или фото мебели с другого сайта,
-мы разбираем её и открываем в онлайн 3D-конструкторе. Клиент дорабатывает модель и публикует
-**объявление**. **Подрядчики** (мебельные цехи) берут объявления и выполняют заказ.
+Sheber — платформа заказа корпусной мебели. **Клиент** собирает мебель в онлайн 3D-конструкторе
+(позже — по ссылке или фото с помощью ИИ) и публикует **заказ**. **Мастерские** проходят модерацию,
+откликаются на заказы своего города ценой и сроком; клиент выбирает одну, и стороны видят контакты друг друга.
+Оплаты на платформе пока нет.
 
 Этот репозиторий — REST API. Фронтенд живёт в соседнем репозитории `../frontend` и получает
 клиент API через Orval из нашей OpenAPI-схемы, поэтому **контракт API — часть кода** (см. «API-контракт»).
@@ -14,13 +15,17 @@ Alembic · aioinject (DI) · PostgreSQL 18 · uv · ruff · mypy (strict) · pyt
 
 Авторизация — Keycloak (JWT), см. раздел «Авторизация». Локальный Keycloak: `../keycloak-theme` (`make up`).
 
+Локально проект запускается **без Docker**: PostgreSQL установлен на машине, API — `make dev`.
+В Docker живёт только Keycloak.
+
 ## Команды
 
 ```bash
 make install            # uv sync + git-хуки pre-commit
-make db-up              # PostgreSQL в Docker
+make db-create          # роль sheber и базы sheber, sheber_test в локальном PostgreSQL (пароль postgres)
 # Keycloak: cd ../keycloak-theme && make up
 make migrate            # применить миграции
+make seed               # справочники (города) из scripts/seeds/*.json; можно запускать повторно
 make dev                # API на http://localhost:8000, Swagger: /api/docs
 make migration m="..."  # новая миграция из моделей (autogenerate)
 make lint               # ruff + format --check + mypy
@@ -60,23 +65,43 @@ enums/<домен>_enum.py        перечисления
 settings/                    *_settings.py — классы pydantic-settings, resolver.get_settings
 common/                      инфраструктура: database.py, exceptions.py, security/ (проверка JWT), клиенты внешних систем
 alembic/versions/            миграции (только autogenerate)
-scripts/                     служебные скрипты
+scripts/                     служебные скрипты: seed.py, create_db.sql, export_openapi.py
+scripts/seeds/               данные справочников (JSON с переводами)
 tests/                       тесты, зеркалят домены: tests/<домен>/test_*.py
 ```
 
-### Домены (план)
+### Домены
 
 | Домен | Что внутри |
 |---|---|
-| `users` | профили клиентов и подрядчиков (поверх Keycloak) |
-| `contractors` | цехи: реквизиты, специализация, портфолио, рейтинг |
-| `imports` | приём ссылки/фото, парсинг источника, черновик модели |
-| `furniture` | модель мебели для конструктора: габариты, материалы, параметры |
-| `listings` | объявления клиентов |
-| `offers` | отклики подрядчиков на объявления |
-| `orders` | заказ после выбора подрядчика, статусы выполнения |
-| `files` | загрузка файлов (S3) |
+| `cities` | справочник городов: таблица с переводами названий, `GET /cities` в языке запроса, заполняется `make seed` |
+| `users` | профиль поверх Keycloak: имя, телефон, город; создаётся при первом запросе (`UserService.sync_user`) |
+| `workshops` | мастерские: анкета, модерация админом, выдача роли `contractor` через Admin API Keycloak |
+| `designs` | проекты конструктора: документ мебели (`schemas/designs/sch_document.py`), источник (с нуля / ссылка / фото) |
+| `orders` | опубликованный проект (снимок документа) и его статусы: `published → assigned → in_progress → completed`, `cancelled` |
+| `offers` | отклики мастерских: цена, срок; принятие отклика назначает мастерскую на заказ |
+| `imports` | *(позже)* разбор ссылки/фото с помощью ИИ в черновик документа. Сейчас ссылка сохраняется в `designs.source_url` и передаётся мастерской как референс |
+| `files` | *(позже)* загрузка файлов (S3) |
 | `system` | служебное: health и т.п. |
+
+### Справочники и перечисления
+
+Два вида «списков значений», выбор между ними — по тому, кто и как часто их меняет:
+
+| | Перечисление в коде | Таблица-справочник |
+|---|---|---|
+| Примеры | статусы заказа и отклика, типы мебели, материалы, роли | города |
+| Где живёт | `enums/<домен>_enum.py` (`StrEnum`) | своя таблица + `scripts/seeds/<что>.json` |
+| В БД | колонка `String(32)` без ограничений (не `Enum`, не CHECK) | строки таблицы, связь по `id` (FK) |
+| Валидация | Pydantic-схемы API (поле типа `XxxEnum`) | сервис: `require_active(id)` перед записью |
+| Новое значение | правка enum в коде, **без миграции** | `make seed` (или админка), без деплоя кода |
+| Переводы | на фронте (`i18n`), бэкенд отдаёт код | в БД, бэкенд отдаёт текст на языке запроса |
+| Фронт | тип и константы генерирует Orval из OpenAPI | список — запросом к API |
+
+- В моделях enum-поле объявляется как `Mapped[str] = mapped_column(String(32), default=XxxEnum.VALUE)` с комментарием,
+  какой enum в нём хранится. Тип `Enum` SQLAlchemy запрещён — проверяет `tests/test_models.py`.
+- Справочник: `id` (UUID), стабильный `slug` для сидов, `name` (JSONB с переводами), `sort_order`, `is_active`.
+  Удалять строки нельзя (на них ссылаются) — скрывайте через `is_active`.
 
 Новый домен — новая подпапка в каждом нужном слое с тем же именем (`snake_case`, мн. число для коллекций).
 
@@ -124,13 +149,16 @@ tests/                       тесты, зеркалят домены: tests/<�
 
 **models** — только описание таблиц. Наследуйте `Base` и миксины из `models/mdl_base.py`.
 - Типы — через `Mapped[...]`; `datetime` всегда с таймзоной (уже настроено в `Base`).
-- Enum хранится строкой (`native_enum=False`) — так настроено в `Base`, переопределять не нужно.
+- Перечисления — колонка `String(32)`, не `Enum` (см. «Справочники и перечисления»).
 - JSON-поля: `Mapped[dict[str, Any]]` / `Mapped[list[Any]]` → JSONB.
 - Внешние ключи с явным `ondelete`. Индексы — на всё, по чему фильтруем.
 - Регистрировать модель нигде не нужно: `import_all_models()` подхватывает все `models/**/mdl_*.py`.
 
 **schemas** — наследуйте `BaseSchema`. В JSON поля автоматически в `camelCase`, в Python — `snake_case`.
 Валидацию входа делайте в схеме (`Field(min_length=..., gt=...)`), а не в сервисе.
+`model_dump()` по умолчанию отдаёт `camelCase` — для ORM-моделей используйте `model_dump(by_alias=False)`.
+Телефоны — тип `Phone` из `sch_base.py` (нормализует в `+7XXXXXXXXXX`), пагинация — `PaginationSchema` через
+`Annotated[PaginationSchema, Query()]`.
 
 **settings** — только классы `BaseSettings` с `env_prefix`. Получать через DI (`settings: AppSettings`
 в конструкторе) или `get_settings(Cls)`. `os.environ` в коде не читаем. Новую переменную — в `.env.example`.
@@ -145,7 +173,7 @@ tests/                       тесты, зеркалят домены: tests/<�
 class Listing(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "listings"
     title: Mapped[str] = mapped_column(String(256))
-    status: Mapped[ListingStatusEnum] = mapped_column(default=ListingStatusEnum.DRAFT, index=True)
+    status: Mapped[str] = mapped_column(String(32), default=ListingStatusEnum.DRAFT, index=True)  # ListingStatusEnum
 
 
 # managers/listings/mng_listings.py
@@ -160,7 +188,7 @@ class ListingService:
         self._mng_listings = mng_listings
 
     async def create_listing(self, data: ListingCreateSchema) -> ListingSchema:
-        listing = await self._mng_listings.add(Listing(**data.model_dump()))
+        listing = await self._mng_listings.add(Listing(**data.model_dump(by_alias=False)))
         await self._session.commit()
         return ListingSchema.model_validate(listing)
 
@@ -214,9 +242,27 @@ async def create_offer(listing_id: UUID, user: ContractorUser, ...) -> OfferSche
 - Тесты: фикстуры `make_token` и `auth_app` из `tests/auth/conftest.py` подписывают токены локальным RSA-ключом —
   Keycloak для тестов не нужен.
 
+## Мультиязычность
+
+Языки — `LanguageEnum` (`ru`, `kk`, `en`) в `enums/i18n_enum.py`, по умолчанию `ru`.
+
+- Клиент передаёт язык заголовком `Accept-Language` (фронтенд ставит его в каждый запрос).
+  Эндпоинт получает его зависимостью `language: Language` и передаёт в сервис аргументом.
+- Переводимые данные в БД — JSONB `{"ru": ..., "kk": ..., "en": ...}`; `ru` обязателен, это запасной язык.
+  Вход — `LocalizedTextSchema`, выход — поле типа `LocalizedStr`: схема сама выбирает перевод, если
+  валидировать её с контекстом языка:
+  ```python
+  CitySchema.model_validate(city, context=language_context(language))
+  ```
+  Контекст передаётся вложенным схемам: `OrderSchema` с полем `city: CityBriefSchema` локализует и город.
+- Тексты интерфейса и подписи enum-значений переводит фронтенд; ошибки API — по `code`.
+- Новый язык: значение в `LanguageEnum`, переводы в сидах и в локалях фронтенда. Миграция не нужна.
+
 ## Миграции (Alembic)
 
-**Миграции создаются только автогенерацией из моделей.** Порядок:
+**Миграции создаются только автогенерацией из моделей.** Одна миграция — один модуль (таблица или
+тесно связанная группа таблиц одного домена). Не смешивайте в одной миграции изменения разных доменов:
+меняете две модели из разных доменов — сделайте два шага `make migration`. Порядок:
 
 1. Изменить модель в `models/`.
 2. `make migration m="add listings table"` — описание на английском, в нижнем регистре.
@@ -228,6 +274,8 @@ async def create_offer(listing_id: UUID, user: ContractorUser, ...) -> OfferSche
 - pre-commit отклоняет файл миграции без маркера autogenerate;
 - Claude Code не даёт создать файл в `alembic/versions` (`.claude/hooks`), а правку — только с подтверждения;
 - `tests/test_migrations.py` падает, если модели разошлись с миграциями.
+
+Данные справочников в миграции не пишутся — они в `scripts/seeds/` и загружаются `make seed`.
 
 Правка сгенерированной миграции допустима **только** для того, чего autogenerate не умеет:
 переименование колонки/таблицы (иначе он сделает drop + add и потеряет данные), перенос данных,
@@ -248,7 +296,11 @@ async def create_offer(listing_id: UUID, user: ContractorUser, ...) -> OfferSche
 
 - `pytest` + `pytest-asyncio` (режим auto). HTTP — через фикстуру `client` (`httpx.AsyncClient`).
 - Файлы `tests/<домен>/test_*.py`, функции `test_<что>_<ожидание>`.
-- Тесты, которым нужна БД, помечаются `@pytest.mark.db`.
+- Тесты, которым нужна БД, помечаются `@pytest.mark.db`. Они работают в отдельной базе `sheber_test`
+  (создаётся `make db-create`, мигрируется автоматически), таблицы очищаются после каждого теста.
+- Справочники в тестах — фикстуры (`cities` в `tests/conftest.py`), а не сиды.
+- Пользователи в тестах — фикстура `auth_headers(user_id, roles=(...))`; вызовы Keycloak Admin API —
+  фикстура `role_granter` (подменяет `RoleGranter` в DI и записывает вызовы).
 - Новая бизнес-логика — с тестом.
 
 ## Git
@@ -300,7 +352,7 @@ async def create_offer(listing_id: UUID, user: ContractorUser, ...) -> OfferSche
 
 1. `make format && make lint` — без ошибок.
 2. `make test` — зелёные.
-3. Если менялись модели — миграция создана через `make migration` и проверена `make check-migrations`.
+3. Если менялись модели — миграция (по одной на модуль) создана через `make migration` и проверена `make check-migrations`.
 4. Если менялся API — тег, уникальное имя эндпоинта, схемы ответа на месте.
 5. Новые переменные окружения — в `.env.example`.
 

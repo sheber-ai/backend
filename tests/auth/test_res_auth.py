@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from httpx import AsyncClient
 
-from tests.auth.conftest import USER_ID, MakeToken
+from tests.conftest import USER_ID, MakeToken
 
 
 async def test_get_me_returns_user_from_token(auth_app: FastAPI, client: AsyncClient, make_token: MakeToken) -> None:

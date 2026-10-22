@@ -9,6 +9,10 @@ class KeycloakSettings(BaseSettings):
     realm: str = "sheber"
     audience: str = "sheber-backend"
     swagger_client_id: str = "sheber-frontend"
+    # Server-to-server URL for the Admin API (differs from `url` inside Docker)
+    admin_url: str | None = None
+    service_client_id: str = "sheber-backend"
+    service_client_secret: str = ""
 
     @property
     def issuer(self) -> str:
@@ -25,3 +29,7 @@ class KeycloakSettings(BaseSettings):
     @property
     def token_url(self) -> str:
         return f"{self.issuer}/protocol/openid-connect/token"
+
+    @property
+    def admin_base_url(self) -> str:
+        return (self.admin_url or self.url).rstrip("/")
