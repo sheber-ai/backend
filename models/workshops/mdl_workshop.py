@@ -23,6 +23,12 @@ class Workshop(Base, UUIDMixin, TimestampMixin):
     website: Mapped[str | None] = mapped_column(String(512))
     # FurnitureTypeEnum values
     furniture_types: Mapped[list[Any]] = mapped_column(default=list)
+    # WorkshopServiceEnum values
+    services: Mapped[list[Any]] = mapped_column(default=list, server_default="[]")
+    # WorkshopMaterialEnum values
+    materials: Mapped[list[Any]] = mapped_column(default=list, server_default="[]")
+    warranty_months: Mapped[int | None]
+    founded_year: Mapped[int | None]
     # WorkshopStatusEnum
     status: Mapped[str] = mapped_column(String(32), default=WorkshopStatusEnum.PENDING, index=True)
     rejection_reason: Mapped[str | None] = mapped_column(Text)
@@ -30,3 +36,7 @@ class Workshop(Base, UUIDMixin, TimestampMixin):
 
     owner: Mapped[User] = relationship(lazy="raise")
     city: Mapped[City] = relationship(lazy="raise")
+    # Loaded with every workshop: public cards show where it works, the feed filters by it
+    service_cities: Mapped[list[City]] = relationship(
+        secondary="workshop_cities", lazy="selectin", order_by="City.sort_order"
+    )

@@ -6,10 +6,10 @@ from pydantic import Field, field_validator
 
 from enums.designs_enum import FurnitureTypeEnum
 from enums.offers_enum import OfferStatusEnum
-from enums.orders_enum import OrderStatusEnum
+from enums.orders_enum import OrderGroupEnum, OrderStatusEnum
 from schemas.cities.sch_city import CityBriefSchema
 from schemas.offers.sch_offer import OfferSchema
-from schemas.sch_base import BaseSchema, PaginationSchema
+from schemas.sch_base import BaseSchema, PageSchema, PaginationSchema
 from schemas.users.sch_user import ContactSchema
 from schemas.workshops.sch_workshop import WorkshopPublicSchema
 
@@ -56,6 +56,22 @@ class OrderCreateSchema(BaseSchema):
         return value
 
 
+class MyOrdersFilterSchema(PaginationSchema):
+    group: OrderGroupEnum | None = Field(default=None, description="Only orders of this tab")
+
+
+class OrderGroupCountsSchema(BaseSchema):
+    active: int
+    completed: int
+    cancelled: int
+
+
+class MyOrdersPageSchema(PageSchema[OrderSchema]):
+    counts: OrderGroupCountsSchema = Field(description="Orders in each tab, regardless of the filter")
+
+
 class OrderFeedFilterSchema(PaginationSchema):
     city_id: UUID | None = None
     furniture_type: FurnitureTypeEnum | None = None
+    without_my_offer: bool = Field(default=False, description="Hide orders the workshop already responded to")
+    my_cities: bool = Field(default=False, description="Only orders from the cities the workshop serves")

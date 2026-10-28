@@ -8,13 +8,14 @@ from fastapi import APIRouter, Query, status
 from rest_api.dependencies import ContractorUser, CurrentUser, Language
 from schemas.offers.sch_offer import OfferCreateSchema, OfferSchema, OfferWithWorkshopSchema
 from schemas.orders.sch_order import (
+    MyOrdersFilterSchema,
+    MyOrdersPageSchema,
     OrderCreateSchema,
     OrderDetailSchema,
     OrderFeedFilterSchema,
     OrderFeedItemSchema,
-    OrderSchema,
 )
-from schemas.sch_base import PageSchema, PaginationSchema
+from schemas.sch_base import PageSchema
 from services.offers.svc_offers import OfferService
 from services.orders.svc_orders import OrderService
 
@@ -32,12 +33,12 @@ async def create_order(
 @router.get("/mine")
 @inject
 async def list_my_orders(
-    pagination: Annotated[PaginationSchema, Query()],
+    filters: Annotated[MyOrdersFilterSchema, Query()],
     user: CurrentUser,
     language: Language,
     svc_orders: Injected[OrderService],
-) -> PageSchema[OrderSchema]:
-    return await svc_orders.list_my_orders(user, pagination, language)
+) -> MyOrdersPageSchema:
+    return await svc_orders.list_my_orders(user, filters, language)
 
 
 @router.get("/feed")

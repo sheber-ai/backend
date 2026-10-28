@@ -1,6 +1,7 @@
 import re
 from typing import Annotated, Any
 
+import phonenumbers
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, ValidationInfo
 from pydantic.alias_generators import to_camel
 
@@ -31,12 +32,22 @@ class ErrorSchema(BaseSchema):
 
 
 def _normalize_phone(value: str) -> str:
-    digits = re.sub(r"\D", "", value)
-    if len(digits) == 11 and digits[0] in "78":
-        digits = digits[1:]
-    if len(digits) != 10:
-        raise ValueError("phone must be a Kazakhstan number: +7 XXX XXX XX XX")
-    return f"+7{digits}"
+    """Any valid number in E.164 (+77011234567). Without "+" the number is read as Kazakhstani: 8 701..., 701..."""
+    raw = value.strip()
+    digits = re.sub(r"\D", "", raw)
+    if not raw.startswith("+"):
+        if len(digits) == 11 and digits[0] in "78":
+            digits = digits[1:]
+        if len(digits) != 10:
+            raise ValueError("phone must be international (+country code) or a Kazakhstan number")
+        digits = f"7{digits}"
+    try:
+        number = phonenumbers.parse(f"+{digits}", None)
+    except phonenumbers.NumberParseException as error:
+        raise ValueError("phone is not a valid number") from error
+    if not phonenumbers.is_valid_number(number):
+        raise ValueError("phone is not a valid number")
+    return phonenumbers.format_number(number, phonenumbers.PhoneNumberFormat.E164)
 
 
 type Phone = Annotated[str, AfterValidator(_normalize_phone)]

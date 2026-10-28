@@ -5,15 +5,25 @@ from uuid import UUID
 from pydantic import AfterValidator, Field, model_validator
 
 from enums.designs_enum import DesignSourceEnum, FurnitureTypeEnum
+from enums.orders_enum import OrderStatusEnum
 from schemas.designs.sch_document import DesignDocumentSchema
 from schemas.sch_base import BaseSchema
 
 
 def _validate_document(value: dict[str, Any]) -> dict[str, Any]:
-    return DesignDocumentSchema.model_validate(value).model_dump(mode="json", by_alias=True)
+    document = DesignDocumentSchema.model_validate(value).model_dump(mode="json", by_alias=True)
+    # Older clients read a missing block as the default; null would break them
+    if document.get("hardware") is None:
+        document.pop("hardware", None)
+    return document
 
 
 type Document = Annotated[dict[str, Any], AfterValidator(_validate_document)]
+
+
+class DesignOrderBriefSchema(BaseSchema):
+    id: UUID
+    status: OrderStatusEnum
 
 
 class DesignSchema(BaseSchema):
@@ -25,6 +35,9 @@ class DesignSchema(BaseSchema):
     document: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    active_order: DesignOrderBriefSchema | None = Field(
+        default=None, description="Unfinished order published from this design"
+    )
 
 
 class DesignCreateSchema(BaseSchema):

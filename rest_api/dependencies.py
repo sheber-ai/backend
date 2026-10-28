@@ -43,6 +43,19 @@ async def get_current_user(
 CurrentUser = Annotated[CurrentUserSchema, Depends(get_current_user)]
 
 
+async def get_optional_user(
+    token: Annotated[str | None, Depends(oauth2_scheme)],
+    verifier: Annotated[KeycloakTokenVerifier, Depends(get_token_verifier)],
+) -> CurrentUserSchema | None:
+    """The user if a token came, None for guests. A bad token is still rejected."""
+    if not token:
+        return None
+    return CurrentUserSchema.from_claims(await verifier.verify(token))
+
+
+OptionalUser = Annotated[CurrentUserSchema | None, Depends(get_optional_user)]
+
+
 def require_roles(*roles: UserRoleEnum) -> Callable[[CurrentUserSchema], Awaitable[CurrentUserSchema]]:
     """Allow users with any of the given roles."""
 

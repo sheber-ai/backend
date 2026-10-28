@@ -6,8 +6,7 @@ from aioinject.ext.fastapi import inject
 from fastapi import APIRouter, Query
 
 from rest_api.dependencies import ContractorUser, CurrentUser, Language
-from schemas.offers.sch_offer import MyOfferSchema, OfferCreateSchema, OfferSchema
-from schemas.sch_base import PageSchema, PaginationSchema
+from schemas.offers.sch_offer import MyOffersFilterSchema, MyOffersPageSchema, OfferCreateSchema, OfferSchema
 from services.offers.svc_offers import OfferService
 
 router = APIRouter(prefix="/offers", tags=["offers"])
@@ -16,12 +15,12 @@ router = APIRouter(prefix="/offers", tags=["offers"])
 @router.get("/mine")
 @inject
 async def list_my_offers(
-    pagination: Annotated[PaginationSchema, Query()],
+    filters: Annotated[MyOffersFilterSchema, Query()],
     user: ContractorUser,
     language: Language,
     svc_offers: Injected[OfferService],
-) -> PageSchema[MyOfferSchema]:
-    return await svc_offers.list_my_offers(user, pagination, language)
+) -> MyOffersPageSchema:
+    return await svc_offers.list_my_offers(user, filters, language)
 
 
 @router.put("/{offer_id}")

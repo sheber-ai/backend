@@ -2,6 +2,8 @@ import os
 
 # Tests use their own database; must be set before settings are read
 os.environ.setdefault("DB_NAME", "sheber_test")
+# Uploaded files of a test run go to a throwaway directory
+os.environ.setdefault("FILES_STORAGE_DIR", __import__("tempfile").mkdtemp(prefix="sheber-files-"))
 
 import time
 import uuid

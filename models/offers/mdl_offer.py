@@ -18,6 +18,11 @@ class Offer(Base, UUIDMixin, TimestampMixin):
     price: Mapped[int]
     days: Mapped[int]
     comment: Mapped[str] = mapped_column(Text, default="")
+    warranty_months: Mapped[int | None]
+    includes_delivery: Mapped[bool] = mapped_column(default=False, server_default="false")
+    includes_installation: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Share of the price paid before work starts, 0..100
+    prepayment_percent: Mapped[int | None]
     # OfferStatusEnum
     status: Mapped[str] = mapped_column(String(32), default=OfferStatusEnum.PENDING, index=True)
 

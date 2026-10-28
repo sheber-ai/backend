@@ -81,3 +81,43 @@ async def test_workshop_city_is_localized(
     response = await client.get("/api/v1/workshops/mine", headers={**headers, "Accept-Language": "en-US,en;q=0.9"})
 
     assert response.json()["city"]["name"] == "Almaty"
+
+
+async def test_public_profile_shows_services_and_real_figures(
+    client: AsyncClient, auth_headers: AuthHeaders, role_granter: FakeRoleGranter, workshop_body: dict[str, Any]
+) -> None:
+    owner = auth_headers(uuid.uuid4())
+    body = {
+        **workshop_body,
+        "services": ["measurement", "installation", "measurement"],
+        "materials": ["chipboard", "mdf"],
+        "warrantyMonths": 24,
+        "foundedYear": 2015,
+    }
+    workshop = await client.put("/api/v1/workshops/mine", headers=owner, json=body)
+    await client.post(
+        f"/api/v1/workshops/{workshop.json()['id']}/approve",
+        headers=auth_headers(uuid.uuid4(), roles=(UserRoleEnum.ADMIN,)),
+    )
+
+    response = await client.get(f"/api/v1/workshops/{workshop.json()['id']}")
+
+    profile = response.json()
+    assert profile["services"] == ["measurement", "installation"]
+    assert profile["materials"] == ["chipboard", "mdf"]
+    assert profile["warrantyMonths"] == 24
+    assert profile["foundedYear"] == 2015
+    assert profile["completedOrders"] == 0
+    assert profile["verifiedAt"] is not None
+    assert "phone" not in profile
+    assert "taxId" not in profile
+
+
+async def test_founded_year_cannot_be_in_future(
+    client: AsyncClient, auth_headers: AuthHeaders, workshop_body: dict[str, Any]
+) -> None:
+    response = await client.put(
+        "/api/v1/workshops/mine", headers=auth_headers(uuid.uuid4()), json={**workshop_body, "foundedYear": 2999}
+    )
+
+    assert response.status_code == 422

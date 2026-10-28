@@ -13,10 +13,18 @@ from services.di import providers as providers_package
 from services.di.types import Providers
 from settings.app_settings import AppSettings
 from settings.db_settings import DBSettings
+from settings.files_settings import FilesSettings
+from settings.imports_settings import ImportsSettings
 from settings.keycloak_settings import KeycloakSettings
 from settings.resolver import get_settings
 
-SETTINGS_CLASSES: tuple[type[BaseSettings], ...] = (AppSettings, DBSettings, KeycloakSettings)
+SETTINGS_CLASSES: tuple[type[BaseSettings], ...] = (
+    AppSettings,
+    DBSettings,
+    KeycloakSettings,
+    FilesSettings,
+    ImportsSettings,
+)
 
 
 def _discover_providers() -> Iterator[Providers]:

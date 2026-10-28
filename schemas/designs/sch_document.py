@@ -82,12 +82,19 @@ class FacadeSchema(BaseSchema):
     panels: int = Field(default=2, ge=2, le=4)
 
 
+class HardwareSchema(BaseSchema):
+    # "none" is push-to-open fronts
+    handles: Literal["bar", "knob", "none"] = "bar"
+
+
 class DesignDocumentSchema(BaseSchema):
     schema_version: Literal[1]
     size: SizeSchema
     plinth: int = Field(ge=0, le=200)
     materials: MaterialsSchema
     facade: FacadeSchema
+    # Optional: documents saved before it appeared mean bar handles
+    hardware: HardwareSchema | None = None
     layout: LayoutNodeSchema
 
     @model_validator(mode="after")

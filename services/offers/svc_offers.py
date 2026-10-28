@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.exceptions import InvalidStatusError, OfferExistsError, PermissionDeniedError
 from enums.i18n_enum import LanguageEnum
-from enums.offers_enum import OfferStatusEnum
+from enums.notifications_enum import NotificationKindEnum
+from enums.offers_enum import OfferStatusEnum, OfferTabEnum
 from enums.orders_enum import OrderStatusEnum
 from managers.offers.mng_offers import OfferManager
 from managers.orders.mng_orders import OrderManager
@@ -12,11 +13,15 @@ from models.offers.mdl_offer import Offer
 from schemas.auth.sch_auth import CurrentUserSchema
 from schemas.offers.sch_offer import (
     MyOfferSchema,
+    MyOffersFilterSchema,
+    MyOffersPageSchema,
     OfferCreateSchema,
     OfferSchema,
+    OfferTabCountsSchema,
     OfferWithWorkshopSchema,
 )
-from schemas.sch_base import PageSchema, PaginationSchema, language_context
+from schemas.sch_base import PageSchema, language_context
+from services.notifications.svc_notifications import NotificationService
 from services.workshops.svc_workshops import WorkshopService
 
 
@@ -27,11 +32,13 @@ class OfferService:
         mng_offers: OfferManager,
         mng_orders: OrderManager,
         svc_workshops: WorkshopService,
+        svc_notifications: NotificationService,
     ) -> None:
         self._session = session
         self._mng_offers = mng_offers
         self._mng_orders = mng_orders
         self._svc_workshops = svc_workshops
+        self._svc_notifications = svc_notifications
 
     async def create_offer(self, current: CurrentUserSchema, order_id: UUID, data: OfferCreateSchema) -> OfferSchema:
         workshop = await self._svc_workshops.require_approved(current)
@@ -52,6 +59,13 @@ class OfferService:
             offer.status = OfferStatusEnum.PENDING
         else:
             raise OfferExistsError("The workshop has already responded to this order")
+        await self._svc_notifications.notify(
+            order.client_id,
+            NotificationKindEnum.OFFER_RECEIVED,
+            subject=order.title,
+            order_id=order.id,
+            actor=workshop.name,
+        )
         await self._session.commit()
         return OfferSchema.model_validate(offer)
 
@@ -81,14 +95,19 @@ class OfferService:
         return PageSchema(items=items, total=len(items))
 
     async def list_my_offers(
-        self, current: CurrentUserSchema, pagination: PaginationSchema, language: LanguageEnum
-    ) -> PageSchema[MyOfferSchema]:
+        self, current: CurrentUserSchema, filters: MyOffersFilterSchema, language: LanguageEnum
+    ) -> MyOffersPageSchema:
         workshop = await self._svc_workshops.require_approved(current)
         offers, total = await self._mng_offers.list_by_workshop(
-            workshop.id, offset=pagination.offset, limit=pagination.limit
+            workshop.id, tab=filters.tab, offset=filters.offset, limit=filters.limit
         )
+        counts = await self._mng_offers.count_tabs_by_workshop(workshop.id)
         items = [MyOfferSchema.model_validate(offer, context=language_context(language)) for offer in offers]
-        return PageSchema(items=items, total=total)
+        return MyOffersPageSchema(
+            items=items,
+            total=total,
+            counts=OfferTabCountsSchema(active=counts[OfferTabEnum.ACTIVE], archive=counts[OfferTabEnum.ARCHIVE]),
+        )
 
     async def accept_offer(self, current: CurrentUserSchema, offer_id: UUID) -> OfferSchema:
         offer = await self._mng_offers.get_with_order(offer_id)
@@ -103,7 +122,13 @@ class OfferService:
         offer.status = OfferStatusEnum.ACCEPTED
         order.status = OrderStatusEnum.ASSIGNED
         order.workshop_id = offer.workshop_id
-        await self._mng_offers.reject_pending(order.id, except_id=offer.id)
+        rejected = await self._mng_offers.reject_pending(order.id, except_id=offer.id)
+        await self._svc_notifications.notify_workshops(
+            [offer.workshop_id], NotificationKindEnum.OFFER_ACCEPTED, subject=order.title, order_id=order.id
+        )
+        await self._svc_notifications.notify_workshops(
+            rejected, NotificationKindEnum.OFFER_REJECTED, subject=order.title, order_id=order.id
+        )
         await self._session.commit()
         return OfferSchema.model_validate(offer)
 

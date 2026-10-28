@@ -16,6 +16,10 @@ class CityManager(BaseManager[City]):
         items = await self._session.scalars(select(City).where(City.is_active).order_by(City.sort_order, City.slug))
         return items.all()
 
+    async def list_active_by_ids(self, city_ids: Sequence[UUID]) -> Sequence[City]:
+        items = await self._session.scalars(select(City).where(City.id.in_(city_ids), City.is_active))
+        return items.all()
+
     async def get_active(self, city_id: UUID) -> City | None:
         return await self._session.scalar(select(City).where(City.id == city_id, City.is_active))
 

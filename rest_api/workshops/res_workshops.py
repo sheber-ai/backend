@@ -10,7 +10,7 @@ from schemas.sch_base import PageSchema
 from schemas.workshops.sch_workshop import (
     WorkshopAdminSchema,
     WorkshopFilterSchema,
-    WorkshopPublicSchema,
+    WorkshopProfileSchema,
     WorkshopRejectSchema,
     WorkshopSaveSchema,
     WorkshopSchema,
@@ -51,7 +51,7 @@ async def list_workshops(
 @inject
 async def get_workshop(
     workshop_id: UUID, language: Language, svc_workshops: Injected[WorkshopService]
-) -> WorkshopPublicSchema:
+) -> WorkshopProfileSchema:
     return await svc_workshops.get_workshop(workshop_id, language)
 
 

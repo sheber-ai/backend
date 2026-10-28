@@ -38,7 +38,7 @@ async def test_update_my_profile_normalizes_phone(
     assert response.json()["city"] == {"id": str(cities["oskemen"]), "name": "Усть-Каменогорск"}
 
 
-async def test_update_my_profile_rejects_foreign_phone(
+async def test_update_my_profile_rejects_invalid_phone(
     client: AsyncClient, auth_headers: AuthHeaders, cities: dict[str, uuid.UUID]
 ) -> None:
     response = await client.put(

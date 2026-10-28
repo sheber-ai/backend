@@ -31,6 +31,15 @@ class CityService:
             raise CityNotFoundError(f"City {city_id} not found")
         return city
 
+    async def require_all_active(self, city_ids: Sequence[UUID]) -> list[City]:
+        """The cities in the given order, without repeats; any unknown or hidden one fails the whole list."""
+        unique = list(dict.fromkeys(city_ids))
+        found = {city.id: city for city in await self._mng_cities.list_active_by_ids(unique)}
+        missing = [city_id for city_id in unique if city_id not in found]
+        if missing:
+            raise CityNotFoundError(f"City {missing[0]} not found")
+        return [found[city_id] for city_id in unique]
+
     async def seed_cities(self, cities: Sequence[CitySeedSchema]) -> int:
         for city in cities:
             await self._mng_cities.upsert(
